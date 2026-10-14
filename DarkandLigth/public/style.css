@@ -1,0 +1,226 @@
+/* ==========================================
+   1. CONFIGURACIÓN GENERAL Y TIPOGRAFÍA
+   ========================================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    scroll-behavior: smooth;
+}
+
+body {
+    background: linear-gradient(135deg, #0d0c1d 0%, #1a1429 50%, #2c1a1a 100%);
+    color: #f5f5f5;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==========================================
+   2. BARRA DE NAVEGACIÓN
+   ========================================== */
+nav {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    background-color: rgba(13, 12, 29, 0.95);
+    padding: 15px 0;
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    z-index: 1000;
+    border-bottom: 2px solid #5a3791;
+}
+
+nav a {
+    color: #e0e0e0;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: color 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+nav a:hover {
+    color: #ffd700;
+}
+
+/* ==========================================
+   3. ENCABEZADO / HERO SECTION (INDEX)
+   ========================================== */
+header {
+    flex: 1; /* Permite que el contenido se expanda de forma flexible */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 40px 20px;
+    margin-top: 60px;
+    background: radial-gradient(circle, rgba(90,55,145,0.2) 0%, rgba(0,0,0,0) 70%);
+}
+
+header h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 15px;
+    background: linear-gradient(90deg, #ffd700, #ff8c00, #a020f0, #9370db);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 8px rgba(255, 215, 0, 0.2));
+}
+
+header p {
+    font-size: 1.2rem;
+    color: #cccccc;
+    max-width: 600px;
+}
+
+/* ==========================================
+   4. ESTILO COMÚN DE LAS SECCIONES (SUBPÁGINAS)
+   ========================================== */
+section {
+    max-width: 900px;
+    width: 90%;
+    margin: 100px auto 40px auto; /* Margen superior amplio para no pegarse al menú */
+    padding: 40px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+section h2 {
+    font-size: 1.8rem;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid;
+}
+
+/* Personalización por sección temática */
+#historia h2 {
+    color: #ffb700;
+    border-image: linear-gradient(to right, #ffb700, transparent) 1;
+}
+
+#instrucciones h2 {
+    color: #b388ff;
+    border-image: linear-gradient(to right, #b388ff, transparent) 1;
+}
+
+#feedback h2 {
+    color: #00e5ff;
+    border-image: linear-gradient(to right, #00e5ff, transparent) 1;
+}
+
+/* ==========================================
+   5. LISTAS DE INSTRUCCIONES
+   ========================================== */
+ul {
+    list-style: none;
+}
+
+ul li {
+    margin-bottom: 15px;
+    padding-left: 30px;
+    position: relative;
+}
+
+ul li::before {
+    content: "✦";
+    position: absolute;
+    left: 0;
+    color: #ffd700;
+    font-size: 1.2rem;
+}
+
+ul li:nth-child(2)::before {
+    color: #b388ff;
+}
+
+ul li:nth-child(3)::before {
+    color: #ff3333;
+}
+
+/* ==========================================
+   6. FORMULARIO DE FEEDBACK
+   ========================================== */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #bbbbbb;
+}
+
+input[type="text"], textarea {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+input[type="text"]:focus, textarea:focus {
+    outline: none;
+    border-color: #00e5ff;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+/* Botón de Enviar */
+button[type="submit"] {
+    background: linear-gradient(90deg, #00e5ff, #00a1ff);
+    color: #0d0c1d;
+    border: none;
+    padding: 14px;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button[type="submit"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 229, 255, 0.4);
+}
+
+button[type="submit"]:active {
+    transform: translateY(0);
+}
+
+/* ==========================================
+   7. PIE DE PÁGINA (FOOTER)
+   ========================================== */
+footer {
+    background-color: rgba(13, 12, 29, 0.95);
+    padding: 20px;
+    text-align: center;
+    border-top: 2px solid #3a2261;
+    width: 100%;
+    margin-top: auto; /* Fuerza al footer a bajar si hay poco contenido */
+}
+
+footer p {
+    color: #888888;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
