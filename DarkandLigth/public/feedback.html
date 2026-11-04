@@ -1,0 +1,139 @@
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description" content="Comparte tu experiencia con Dark & Light y cuentanos que te ha parecido esta aventura cooperativa.">
+
+    <title>Dark & Light | Tu opinion</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Navegacion principal -->
+    <nav aria-label="Navegacion principal">
+        <a href="index.html">Inicio</a>
+        <a href="historia.html">Historia</a>
+        <a href="jugar.html">Como jugar</a>
+        <a href="feedback.html" class="active" aria-current="page">Feedback</a>
+    </nav>
+
+    <main>
+
+        <!-- Introduccion -->
+        <section class="feedback-hero">
+
+            <p class="section-label">TU OPINION CUENTA</p>
+
+            <h1>Queremos conocer tu experiencia</h1>
+
+            <p>
+                ¿Has explorado las ruinas? ¿Has conseguido superar
+                los desafios? Nos gustaria saber que te ha parecido
+                Dark & Light y que mejorarias de la aventura.
+            </p>
+
+        </section>
+
+        <!-- Formulario -->
+        <section id="feedback" class="feedback-section">
+
+            <div class="feedback-heading">
+                <p class="section-label">FORMULARIO DE OPINION</p>
+                <h2>Dejanos tu feedback</h2>
+
+                <p>
+                    Rellena los siguientes campos. Tu opinion nos
+                    ayudara a conocer mejor la experiencia de juego.
+                </p>
+            </div>
+
+            <form id="form-feedback">
+
+                <div class="form-group">
+                    <label for="nombre">Tu nombre</label>
+
+                    <input
+                        type="text"
+                        id="nombre"
+                        name="nombre"
+                        placeholder="Escribe tu nombre"
+                        maxlength="50"
+                        autocomplete="name"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="experiencia">¿Que te ha parecido el juego?</label>
+
+                    <select id="experiencia" name="experiencia" required>
+                        <option value="">Selecciona una opcion</option>
+                        <option value="Excelente">Me ha encantado</option>
+                        <option value="Buena">Ha estado bastante bien</option>
+                        <option value="Normal">Ha estado bien, pero mejoraria cosas</option>
+                        <option value="Mala">No ha sido lo que esperaba</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="mensaje">Cuentanos tu experiencia</label>
+
+                    <textarea
+                        id="mensaje"
+                        name="mensaje"
+                        placeholder="¿Que es lo que mas te ha gustado? ¿Que cambiarias?..."
+                        maxlength="1000"
+                        required
+                    ></textarea>
+                </div>
+
+                <div class="form-note">
+                    <span aria-hidden="true">✦</span>
+                    No hay respuestas incorrectas. Todas las opiniones
+                    son bienvenidas.
+                </div>
+
+                <button type="submit">
+                    Enviar mi opinion
+                </button>
+
+            </form>
+
+        </section>
+
+        <!-- Despedida -->
+        <section class="feedback-footer">
+
+            <h2>Gracias por formar parte de la aventura</h2>
+
+            <p>
+                Dark & Light es un proyecto que sigue creciendo.
+                Cada comentario nos ayuda a mejorar.
+            </p>
+
+            <a href="index.html" class="hero-secondary">
+                Volver al inicio
+            </a>
+
+        </section>
+
+    </main>
+
+    <!-- Pie de pagina -->
+    <footer>
+        <p>
+            &copy; 2026 Dark & Light Studio.
+            Proyecto desarrollado por Juan Carlos, Javier y Daniel.
+        </p>
+    </footer>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
