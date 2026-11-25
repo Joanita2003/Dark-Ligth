@@ -15,6 +15,16 @@ const FUERZA_SALTO = 10
 const RADIO_HITBOX = 0.5
 const ALTURA_HITBOX = 2.5
 
+// Estanques elementales
+const RADIO_ESTANQUE_X = 1.2
+const RADIO_ESTANQUE_Z = 1.2
+
+// Botón y puerta
+const BOTON_RADIO = 0.6
+const PUERTA_ALTURA = 3
+const PUERTA_ALTURA_ABIERTA = -2.5 // desplazamiento vertical cuando se abre
+const PUERTA_VELOCIDAD = 4         // unidades por segundo
+
 const TECLAS_BLOQUEADAS = [
   'Space',
   'ArrowUp',
@@ -167,6 +177,96 @@ const meta1 = { x: -2, z: -16, mesh: crearMeta(-2, -16, 0xffc107) } // Dorada (J
 const meta2 = { x: 2, z: -16, mesh: crearMeta(2, -16, 0x9b59b6) }   // Morada (Jugador 2)
 
 // ==========================================================
+// ESTANQUES ELEMENTALES (LUZ Y OSCURIDAD)
+// Se colocan antes de las metas (z entre -5 y -8).
+// Sustituir las mallas por los modelos .glb cuando estén listos,
+// manteniendo las mismas coordenadas (x, z) y radios.
+// ==========================================================
+function crearEstanque(x, z, color) {
+  const malla = new THREE.Mesh(
+    new THREE.CylinderGeometry(RADIO_ESTANQUE_X, RADIO_ESTANQUE_X, 0.05, 32),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.85
+    })
+  )
+  malla.position.set(x, 0.025, z)
+  scene.add(malla)
+  return { x, z, mesh: malla, color }
+}
+
+// Estanque dorado (Luz) y morado (Oscuridad)
+const estanqueLuz = crearEstanque(-1.5, -7, 0xffc107)
+const estanqueOscuridad = crearEstanque(1.5, -7, 0x9b59b6)
+
+// Estanque morado en el lado de Luz y dorado en el lado de Oscuridad
+// para que cada jugador deba evitar el estanque de su elemento contrario
+// Jugador 1 (Luz): muere en el morado -> estanqueOscuridad
+// Jugador 2 (Oscuridad): muere en el dorado -> estanqueLuz
+
+// ==========================================================
+// BOTÓN DE PRESIÓN Y PUERTA
+// El botón está a un lado (x: -4, z: -4). La puerta bloquea
+// el paso hacia la zona de las metas (z: -10).
+// ==========================================================
+const botonPresion = { x: -4, z: -4, mesh: null, pulsado: false }
+
+function crearBotonPresion() {
+  const grupo = new THREE.Group()
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(BOTON_RADIO * 2, 0.08, BOTON_RADIO * 2),
+    new THREE.MeshStandardMaterial({ color: 0x444444 })
+  )
+  base.position.y = 0.04
+  grupo.add(base)
+
+  const boton = new THREE.Mesh(
+    new THREE.BoxGeometry(BOTON_RADIO * 1.4, 0.06, BOTON_RADIO * 1.4),
+    new THREE.MeshStandardMaterial({
+      color: 0xff3333,
+      emissive: 0xff0000,
+      emissiveIntensity: 0.5
+    })
+  )
+  boton.position.y = 0.11
+  grupo.add(boton)
+
+  grupo.position.set(botonPresion.x, 0, botonPresion.z)
+  scene.add(grupo)
+  return { grupo, boton }
+}
+
+const botonVisual = crearBotonPresion()
+botonPresion.mesh = botonVisual.grupo
+
+// Puerta: pared que bloquea el paso (z: -9)
+const puerta = {
+  x: 0,
+  z: -9,
+  ancho: 6,
+  mesh: null,
+  yCerrada: PUERTA_ALTURA / 2,
+  yAbierta: PUERTA_ALTURA / 2 + PUERTA_ALTURA_ABIERTA,
+  objetivoY: PUERTA_ALTURA / 2
+}
+
+function crearPuerta() {
+  const malla = new THREE.Mesh(
+    new THREE.BoxGeometry(puerta.ancho, PUERTA_ALTURA, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x8b5a2b })
+  )
+  malla.position.set(puerta.x, puerta.yCerrada, puerta.z)
+  scene.add(malla)
+  return malla
+}
+
+puerta.mesh = crearPuerta()
+
+// ==========================================================
 // ENTRADA DE TECLADO
 // ==========================================================
 const teclas = {}
@@ -225,6 +325,7 @@ const pincho = { mesh: null }
 
 const jugador1 = {
   nombre: 'Jugador 1',
+  elemento: 'luz',
   mesh: null,
   baseY: 0,
   vy: 0,
@@ -242,6 +343,7 @@ const jugador1 = {
 
 const jugador2 = {
   nombre: 'Jugador 2',
+  elemento: 'oscuridad',
   mesh: null,
   baseY: 0,
   vy: 0,
@@ -328,6 +430,14 @@ function hitboxJugador(jugador) {
   )
 }
 
+// Comprueba si el jugador está pisando un área circular/elíptica en el suelo
+function jugadorSobreZona(jugador, zona, rx, rz) {
+  if (!jugador.mesh || !jugador.enSuelo) return false
+  const dx = jugador.mesh.position.x - zona.x
+  const dz = jugador.mesh.position.z - zona.z
+  return (dx * dx) / (rx * rx) + (dz * dz) / (rz * rz) <= 1
+}
+
 function actualizarHUD() {
   hud.textContent = `Diamantes: ${recogidos} / 2`
 }
@@ -383,6 +493,18 @@ function alturaSuelo(jugador) {
   return suelo
 }
 
+// Colisión lateral con la puerta cerrada
+function hayColisionPuerta(jugador) {
+  if (!puerta.mesh || !jugador.mesh) return false
+
+  const hitbox = hitboxJugador(jugador)
+  const cajaPuerta = caja(puerta.mesh)
+
+  if (!hitbox.intersectsBox(cajaPuerta)) return false
+
+  return hitbox.min.y < cajaPuerta.max.y - 0.3
+}
+
 // Movimiento con colisión separada por ejes:
 // si el eje X está bloqueado, el personaje sigue deslizándose en Z y viceversa.
 function moverJugador(jugador, delta) {
@@ -406,15 +528,17 @@ function moverJugador(jugador, delta) {
   const velocidad = teclas[c.correr] ? VELOCIDAD_CORRER : VELOCIDAD
   const paso = velocidad * delta
 
+  const bloqueado = () => hayColisionCubo(jugador) || hayColisionPuerta(jugador)
+
   // Eje X
   jugador.mesh.position.x += mx * paso
-  if (hayColisionCubo(jugador)) {
+  if (bloqueado()) {
     jugador.mesh.position.x -= mx * paso
   }
 
   // Eje Z
   jugador.mesh.position.z += mz * paso
-  if (hayColisionCubo(jugador)) {
+  if (bloqueado()) {
     jugador.mesh.position.z -= mz * paso
   }
 
@@ -449,6 +573,48 @@ function aplicarFisica(jugador, delta) {
 function procesarJugador(jugador, delta) {
   moverJugador(jugador, delta)
   aplicarFisica(jugador, delta)
+}
+
+// ==========================================================
+// BOTÓN Y PUERTA: LÓGICA
+// ==========================================================
+function actualizarBotonYPuerta(delta) {
+  const pulsado =
+    (jugador1.mesh && jugadorSobreZona(jugador1, botonPresion, BOTON_RADIO, BOTON_RADIO)) ||
+    (jugador2.mesh && jugadorSobreZona(jugador2, botonPresion, BOTON_RADIO, BOTON_RADIO))
+
+  botonPresion.pulsado = !!pulsado
+
+  // Feedback visual: el botón se ilumina al pulsarlo
+  botonVisual.boton.material.emissiveIntensity = pulsado ? 1.2 : 0.5
+
+  puerta.objetivoY = pulsado ? puerta.yAbierta : puerta.yCerrada
+
+  const diferencia = puerta.objetivoY - puerta.mesh.position.y
+  const paso = PUERTA_VELOCIDAD * delta
+
+  if (Math.abs(diferencia) <= paso) {
+    puerta.mesh.position.y = puerta.objetivoY
+  } else {
+    puerta.mesh.position.y += Math.sign(diferencia) * paso
+  }
+}
+
+// ==========================================================
+// ESTANQUES: LÓGICA ELEMENTAL
+// Luz muere en oscuridad (morado); Oscuridad muere en luz (dorado).
+// ==========================================================
+function comprobarEstanques() {
+  // Jugador 1 (Luz): morado = mortal
+  if (jugadorSobreZona(jugador1, estanqueOscuridad, RADIO_ESTANQUE_X, RADIO_ESTANQUE_Z)) {
+    morir()
+    return
+  }
+
+  // Jugador 2 (Oscuridad): dorado = mortal
+  if (jugadorSobreZona(jugador2, estanqueLuz, RADIO_ESTANQUE_X, RADIO_ESTANQUE_Z)) {
+    morir()
+  }
 }
 
 // ==========================================================
@@ -556,7 +722,10 @@ function animate() {
     procesarJugador(jugador1, delta)
     procesarJugador(jugador2, delta)
 
+    actualizarBotonYPuerta(delta)
+
     comprobarPincho()
+    comprobarEstanques()
     comprobarDiamantes()
     comprobarVictoria()
   }
