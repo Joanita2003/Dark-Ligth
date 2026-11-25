@@ -3,6 +3,36 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
+// ==========================================================
+// CONSTANTES
+// ==========================================================
+const VELOCIDAD = 5
+const VELOCIDAD_CORRER = 11
+const GRAVEDAD = 15
+const FUERZA_SALTO = 10
+
+// Hitbox fija de los jugadores: cilindro/caja de radio 0.5 alrededor de (x, z)
+const RADIO_HITBOX = 0.5
+const ALTURA_HITBOX = 2.5
+
+const TECLAS_BLOQUEADAS = [
+  'Space',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'ShiftRight',
+  'KeyE',
+  'KeyQ',
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD'
+]
+
+// ==========================================================
+// ESCENA, CÁMARA Y RENDERER
+// ==========================================================
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x151515)
 
@@ -12,20 +42,39 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 )
-
 camera.position.set(0, 4, 8)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
-document.querySelector('#app').innerHTML = `
+// ==========================================================
+// INTERFAZ (HUD, NOTIFICACIÓN Y OVERLAY DE VICTORIA)
+// ==========================================================
+const app = document.querySelector('#app')
+app.innerHTML = `
   <div id="scene"></div>
+
+  <div id="hud" style="
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-family: sans-serif;
+    font-weight: bold;
+    font-size: 18px;
+    z-index: 1000;
+    user-select: none;
+  ">Diamantes: 0 / 2</div>
+
   <div id="notification-bar" style="
     position: fixed;
     top: 20px;
     left: 50%;
-    transform: translateX(-50%) translateY(-100px);
+    transform: translateX(-50%) translateY(-120px);
     background: linear-gradient(135deg, #00b4db, #0083b0);
     color: white;
     padding: 12px 24px;
@@ -35,423 +84,511 @@ document.querySelector('#app').innerHTML = `
     box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     transition: transform 0.5s ease-in-out;
     z-index: 1000;
+    white-space: nowrap;
+  "></div>
+
+  <div id="overlay" style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    color: white;
+    font-family: sans-serif;
   ">
-    ¡Diamante recogido: Punto 1!
+    <h1 style="font-size: 48px; margin-bottom: 24px; color: #ffc107;">¡NIVEL COMPLETADO!</h1>
+    <button id="btn-reiniciar" style="
+      padding: 14px 32px;
+      font-size: 20px;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #00b4db, #0083b0);
+      color: white;
+    ">Reiniciar partida</button>
   </div>
 `
 
-document.querySelector('#scene').appendChild(renderer.domElement)
+app.querySelector('#scene').appendChild(renderer.domElement)
 
+const hud = document.getElementById('hud')
+const barraNotificacion = document.getElementById('notification-bar')
+const overlay = document.getElementById('overlay')
+const btnReiniciar = document.getElementById('btn-reiniciar')
+
+// ==========================================================
+// CONTROLES DE CÁMARA
+// ==========================================================
 const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.dampingFactor = 0.05
+controls.keys = {}
 
-const light = new THREE.DirectionalLight(0xffffff, 3)
-light.position.set(3, 5, 5)
-scene.add(light)
+// ==========================================================
+// LUCES Y SUELO
+// ==========================================================
+const luzDireccional = new THREE.DirectionalLight(0xffffff, 3)
+luzDireccional.position.set(3, 5, 5)
+scene.add(luzDireccional)
 
-const ambient = new THREE.AmbientLight(0xffffff, 1.5)
-scene.add(ambient)
+const luzAmbiente = new THREE.AmbientLight(0xffffff, 1.5)
+scene.add(luzAmbiente)
 
-const floor = new THREE.Mesh(
+const suelo = new THREE.Mesh(
   new THREE.PlaneGeometry(200, 200),
   new THREE.MeshStandardMaterial({ color: 0x303030 })
 )
+suelo.rotation.x = -Math.PI / 2
+suelo.position.y = -0.01
+scene.add(suelo)
 
-floor.rotation.x = -Math.PI / 2
-floor.position.y = -0.01
-scene.add(floor)
-
-const loader = new GLTFLoader()
-const clock = new THREE.Clock()
-
-let diamante = {
-  mesh: null,
-  vy: 0,
-  isJumping: false,
-  baseY: 0
-}
-let jugador2 = {
-  mesh: null,
-  vy: 0,
-  isJumping: false,
-  baseY: 0
-}
-
-
-let cubo = {
-  mesh: null,
-  baseY: 0
+// ==========================================================
+// METAS (PUERTAS DE SALIDA)
+// ==========================================================
+function crearMeta(x, z, color) {
+  const malla = new THREE.Mesh(
+    new THREE.BoxGeometry(2.5, 0.06, 2.5),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.35
+    })
+  )
+  malla.position.set(x, 0.03, z)
+  scene.add(malla)
+  return malla
 }
 
-let pincho = {
-  mesh: null
-}
+const meta1 = { x: -2, z: -16, mesh: crearMeta(-2, -16, 0xffc107) } // Dorada (Jugador 1)
+const meta2 = { x: 2, z: -16, mesh: crearMeta(2, -16, 0x9b59b6) }   // Morada (Jugador 2)
 
-let diamantePunto1 = {
-  mesh: null,
-  collected: false
-}
-
-let diamantePunto2 = {
-  mesh: null
-}
-
-const activeKeys = {}
+// ==========================================================
+// ENTRADA DE TECLADO
+// ==========================================================
+const teclas = {}
 
 window.addEventListener('keydown', (e) => {
-  activeKeys[e.code] = true
+  if (TECLAS_BLOQUEADAS.includes(e.code)) {
+    e.preventDefault()
+  }
+  teclas[e.code] = true
 })
 
 window.addEventListener('keyup', (e) => {
-  activeKeys[e.code] = false
+  teclas[e.code] = false
 })
 
-// Personaje Principal (Diamante)
-loader.load(
-  '/models/Diamante.glb',
-  function (gltf) {
-    diamante.mesh = gltf.scene
-    diamante.mesh.position.set(0, 0, 0)
-    
-    const box = new THREE.Box3().setFromObject(diamante.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 2.5 / size.y
-    diamante.mesh.scale.setScalar(scale)
-    diamante.baseY = -box.min.y * scale
-    diamante.mesh.position.y = diamante.baseY
+window.addEventListener('blur', () => {
+  for (const codigo in teclas) {
+    teclas[codigo] = false
+  }
+})
 
-    scene.add(diamante.mesh)
+// ==========================================================
+// CARGADOR DE MODELOS
+// ==========================================================
+const loader = new GLTFLoader()
+const clock = new THREE.Clock()
+
+function cargarModelo(ruta, x, z, altura, alCargar) {
+  loader.load(
+    ruta,
+    (gltf) => {
+      const malla = gltf.scene
+      malla.position.set(x, 0, z)
+
+      const caja = new THREE.Box3().setFromObject(malla)
+      const tamano = caja.getSize(new THREE.Vector3())
+      const escala = altura / tamano.y
+
+      malla.scale.setScalar(escala)
+      const baseY = -caja.min.y * escala
+      malla.position.y = baseY
+
+      scene.add(malla)
+      alCargar(malla, baseY)
+    },
+    undefined,
+    (error) => console.error(`Error al cargar ${ruta}:`, error)
+  )
+}
+
+// ==========================================================
+// OBJETOS DEL NIVEL
+// ==========================================================
+const cubo = { mesh: null, baseY: 0 }
+const pincho = { mesh: null }
+
+const jugador1 = {
+  nombre: 'Jugador 1',
+  mesh: null,
+  baseY: 0,
+  vy: 0,
+  enSuelo: false,
+  inicio: { x: 0, z: 0 },
+  controles: {
+    arriba: 'KeyW',
+    abajo: 'KeyS',
+    izquierda: 'KeyA',
+    derecha: 'KeyD',
+    salto: 'KeyE',
+    correr: 'KeyQ'
+  }
+}
+
+const jugador2 = {
+  nombre: 'Jugador 2',
+  mesh: null,
+  baseY: 0,
+  vy: 0,
+  enSuelo: false,
+  inicio: { x: 2, z: 0 },
+  controles: {
+    arriba: 'ArrowUp',
+    abajo: 'ArrowDown',
+    izquierda: 'ArrowLeft',
+    derecha: 'ArrowRight',
+    salto: 'Space',
+    correr: 'ShiftRight'
+  }
+}
+
+const diamantes = [
+  {
+    mesh: null,
+    recogido: false,
+    propietario: jugador1,
+    x: -0.8,
+    z: -12,
+    ruta: '/models/punto1.glb'
   },
-  undefined,
-  (error) => console.error('Error al cargar personaje Diamante:', error)
-)
+  {
+    mesh: null,
+    recogido: false,
+    propietario: jugador2,
+    x: 0.8,
+    z: -12,
+    ruta: '/models/punto2.glb'
+  }
+]
 
-// Cubo 3D
-loader.load(
-  '/models/cubo.glb',
-  function (gltf) {
-    cubo.mesh = gltf.scene
-    cubo.mesh.position.set(0, 0, -3)
-    
-    const box = new THREE.Box3().setFromObject(cubo.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 2 / size.y
-    cubo.mesh.scale.setScalar(scale)
-    cubo.baseY = -box.min.y * scale
-    cubo.mesh.position.y = cubo.baseY
+let recogidos = 0
+let ganado = false
 
-    scene.add(cubo.mesh)
-  },
-  undefined,
-  (error) => console.error('Error al cargar Cubo:', error)
-)
-// Segundo Jugador Provisional (Caramelo)
-loader.load(
-  '/models/caramelo.glb',
-  function (gltf) {
-    jugador2.mesh = gltf.scene
-    jugador2.mesh.position.set(2, 0, 0)
-    
-    const box = new THREE.Box3().setFromObject(jugador2.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 2.5 / size.y
-    jugador2.mesh.scale.setScalar(scale)
-    jugador2.baseY = -box.min.y * scale
-    jugador2.mesh.position.y = jugador2.baseY
+// Carga del personaje 1 (Diamante)
+cargarModelo('/models/Diamante.glb', jugador1.inicio.x, jugador1.inicio.z, 2.5, (malla, baseY) => {
+  jugador1.mesh = malla
+  jugador1.baseY = baseY
+  malla.position.y = baseY
+})
 
-    scene.add(jugador2.mesh)
-  },
-  undefined,
-  (error) => console.error('Error al cargar Jugador 2:', error)
-)
+// Carga del personaje 2 (Caramelo, provisional)
+cargarModelo('/models/caramelo.glb', jugador2.inicio.x, jugador2.inicio.z, 2.5, (malla, baseY) => {
+  jugador2.mesh = malla
+  jugador2.baseY = baseY
+  malla.position.y = baseY
+})
 
+// Cubo (plataforma y obstáculo)
+cargarModelo('/models/cubo.glb', 0, -3, 2, (malla, baseY) => {
+  cubo.mesh = malla
+  cubo.baseY = baseY
+})
 
-// Pincho
-loader.load(
-  '/models/pincho.glb',
-  function (gltf) {
-    pincho.mesh = gltf.scene
-    pincho.mesh.position.set(5, 0, -10)
-    
-    const box = new THREE.Box3().setFromObject(pincho.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 1.5 / size.y
-    pincho.mesh.scale.setScalar(scale)
-    pincho.mesh.position.y = -box.min.y * scale
+// Pincho (mortal para ambos)
+cargarModelo('/models/pincho.glb', 5, -10, 1.5, (malla) => {
+  pincho.mesh = malla
+})
 
-    scene.add(pincho.mesh)
-  },
-  undefined,
-  (error) => console.error('Error al cargar Pincho:', error)
-)
+// Diamantes recogibles
+diamantes.forEach((d) => {
+  cargarModelo(d.ruta, d.x, d.z, 1.5, (malla) => {
+    d.mesh = malla
+  })
+})
 
-// --- CARGAR PUNTO1.GLB (Más lejos y al lado izquierdo del par) ---
-loader.load(
-  '/models/punto1.glb',
-  function (gltf) {
-    diamantePunto1.mesh = gltf.scene
-    diamantePunto1.mesh.position.set(-0.8, 0, -12) // Lejos (z: -12) y juntos (x: -0.8)
-    
-    const box = new THREE.Box3().setFromObject(diamantePunto1.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 1.5 / size.y
-    diamantePunto1.mesh.scale.setScalar(scale)
-    diamantePunto1.mesh.position.y = -box.min.y * scale
+// ==========================================================
+// UTILIDADES
+// ==========================================================
+function caja(malla) {
+  return new THREE.Box3().setFromObject(malla)
+}
 
-    scene.add(diamantePunto1.mesh)
-  },
-  undefined,
-  (error) => console.error('Error al cargar punto1.glb:', error)
-)
+// Hitbox fija del jugador: caja de radio 0.5 alrededor de (x, z),
+// independiente de la espada u otras partes del modelo que sobresalgan.
+function hitboxJugador(jugador) {
+  const p = jugador.mesh.position
+  return new THREE.Box3(
+    new THREE.Vector3(p.x - RADIO_HITBOX, p.y, p.z - RADIO_HITBOX),
+    new THREE.Vector3(p.x + RADIO_HITBOX, p.y + ALTURA_HITBOX, p.z + RADIO_HITBOX)
+  )
+}
 
-// --- CARGAR PUNTO2.GLB (Más lejos y al lado derecho del par) ---
-loader.load(
-  '/models/punto2.glb',
-  function (gltf) {
-    diamantePunto2.mesh = gltf.scene
-    diamantePunto2.mesh.position.set(0.8, 0, -12) // Lejos (z: -12) y juntos (x: 0.8)
-    
-    const box = new THREE.Box3().setFromObject(diamantePunto2.mesh)
-    const size = box.getSize(new THREE.Vector3())
-    const scale = 1.5 / size.y
-    diamantePunto2.mesh.scale.setScalar(scale)
-    diamantePunto2.mesh.position.y = -box.min.y * scale
+function actualizarHUD() {
+  hud.textContent = `Diamantes: ${recogidos} / 2`
+}
 
-    scene.add(diamantePunto2.mesh)
-  },
-  undefined,
-  (error) => console.error('Error al cargar punto2.glb:', error)
-)
+let temporizadorNotificacion = null
 
-const normalSpeed = 5
-const sprintSpeed = 11
-const gravity = 15
-const jumpForce = 10
+function mostrarNotificacion(texto) {
+  barraNotificacion.textContent = texto
+  barraNotificacion.style.transform = 'translateX(-50%) translateY(0)'
 
+  clearTimeout(temporizadorNotificacion)
+  temporizadorNotificacion = setTimeout(() => {
+    barraNotificacion.style.transform = 'translateX(-50%) translateY(-120px)'
+  }, 2500)
+}
+
+// ==========================================================
+// COLISIONES Y FÍSICA
+// ==========================================================
+// Colisión lateral con el cubo: solo bloquea si el personaje
+// está por debajo de la cara superior del cubo.
+function hayColisionCubo(jugador) {
+  if (!cubo.mesh || !jugador.mesh) return false
+
+  const hitbox = hitboxJugador(jugador)
+  const cajaCubo = caja(cubo.mesh)
+
+  if (!hitbox.intersectsBox(cajaCubo)) return false
+
+  return hitbox.min.y < cajaCubo.max.y - 0.3
+}
+
+// Altura del suelo bajo el personaje (suelo base o cara superior del cubo)
+function alturaSuelo(jugador) {
+  let suelo = jugador.baseY
+
+  if (cubo.mesh) {
+    const cajaCubo = caja(cubo.mesh)
+    const x = jugador.mesh.position.x
+    const z = jugador.mesh.position.z
+
+    const sobreCuboXZ =
+      x >= cajaCubo.min.x - 0.2 &&
+      x <= cajaCubo.max.x + 0.2 &&
+      z >= cajaCubo.min.z - 0.2 &&
+      z <= cajaCubo.max.z + 0.2
+
+    if (sobreCuboXZ && jugador.mesh.position.y >= cajaCubo.max.y - 0.5) {
+      suelo = Math.max(suelo, cajaCubo.max.y)
+    }
+  }
+
+  return suelo
+}
+
+// Movimiento con colisión separada por ejes:
+// si el eje X está bloqueado, el personaje sigue deslizándose en Z y viceversa.
+function moverJugador(jugador, delta) {
+  if (!jugador.mesh) return
+
+  const c = jugador.controles
+  let mx = 0
+  let mz = 0
+
+  if (teclas[c.arriba]) mz -= 1
+  if (teclas[c.abajo]) mz += 1
+  if (teclas[c.izquierda]) mx -= 1
+  if (teclas[c.derecha]) mx += 1
+
+  if (mx === 0 && mz === 0) return
+
+  const longitud = Math.hypot(mx, mz)
+  mx /= longitud
+  mz /= longitud
+
+  const velocidad = teclas[c.correr] ? VELOCIDAD_CORRER : VELOCIDAD
+  const paso = velocidad * delta
+
+  // Eje X
+  jugador.mesh.position.x += mx * paso
+  if (hayColisionCubo(jugador)) {
+    jugador.mesh.position.x -= mx * paso
+  }
+
+  // Eje Z
+  jugador.mesh.position.z += mz * paso
+  if (hayColisionCubo(jugador)) {
+    jugador.mesh.position.z -= mz * paso
+  }
+
+  jugador.mesh.rotation.y = Math.atan2(mx, mz)
+}
+
+// Salto y gravedad
+function aplicarFisica(jugador, delta) {
+  if (!jugador.mesh) return
+
+  const c = jugador.controles
+
+  if (teclas[c.salto] && jugador.enSuelo) {
+    jugador.vy = FUERZA_SALTO
+    jugador.enSuelo = false
+  }
+
+  const suelo = alturaSuelo(jugador)
+
+  jugador.vy -= GRAVEDAD * delta
+  jugador.mesh.position.y += jugador.vy * delta
+
+  if (jugador.mesh.position.y <= suelo && jugador.vy <= 0) {
+    jugador.mesh.position.y = suelo
+    jugador.vy = 0
+    jugador.enSuelo = true
+  } else {
+    jugador.enSuelo = false
+  }
+}
+
+function procesarJugador(jugador, delta) {
+  moverJugador(jugador, delta)
+  aplicarFisica(jugador, delta)
+}
+
+// ==========================================================
+// MUERTE, REINICIO Y RECOGIDA
+// ==========================================================
+function resetearPosiciones() {
+  for (const jugador of [jugador1, jugador2]) {
+    if (!jugador.mesh) continue
+    jugador.mesh.position.set(jugador.inicio.x, jugador.baseY, jugador.inicio.z)
+    jugador.mesh.rotation.y = 0
+    jugador.vy = 0
+    jugador.enSuelo = false
+  }
+}
+
+function reiniciarDiamantes() {
+  recogidos = 0
+  for (const d of diamantes) {
+    if (d.mesh && d.recogido) {
+      d.recogido = false
+      scene.add(d.mesh)
+    }
+  }
+  actualizarHUD()
+}
+
+// Muerte cooperativa: si uno muere, mueren los dos
 function morir() {
-  if (diamante.mesh) {
-    diamante.mesh.position.set(0, diamante.baseY, 0)
-    diamante.vy = 0
-    diamante.isJumping = false
-  }
-  if (jugador2.mesh) {
-    jugador2.mesh.position.set(2, jugador2.baseY, 0)
-    jugador2.vy = 0
-    jugador2.isJumping = false
+  resetearPosiciones()
+  reiniciarDiamantes()
+  mostrarNotificacion('☠ ¡Habéis muerto! Reintentando...')
+}
+
+function comprobarPincho() {
+  if (!pincho.mesh) return
+
+  const cajaPincho = caja(pincho.mesh)
+
+  for (const jugador of [jugador1, jugador2]) {
+    if (!jugador.mesh) continue
+    if (hitboxJugador(jugador).intersectsBox(cajaPincho)) {
+      morir()
+      return
+    }
   }
 }
 
+function comprobarDiamantes() {
+  for (const d of diamantes) {
+    if (!d.mesh || d.recogido) continue
+    if (!d.propietario.mesh) continue
+    if (!hitboxJugador(d.propietario).intersectsBox(caja(d.mesh))) continue
 
-function mostrarNotificacion() {
-  const bar = document.getElementById('notification-bar')
-  if (bar) {
-    bar.style.transform = 'translateX(-50%) translateY(0)'
-    setTimeout(() => {
-      bar.style.transform = 'translateX(-50%) translateY(-100px)'
-    }, 3000)
+    d.recogido = true
+    scene.remove(d.mesh)
+    recogidos++
+    actualizarHUD()
+    mostrarNotificacion(`¡Diamante recogido por ${d.propietario.nombre}!`)
   }
 }
 
+// ==========================================================
+// VICTORIA
+// ==========================================================
+function enMeta(jugador, meta) {
+  if (!jugador.mesh || !jugador.enSuelo) return false
+
+  const x = jugador.mesh.position.x
+  const z = jugador.mesh.position.z
+
+  return Math.abs(x - meta.mesh.position.x) <= 1.25 &&
+         Math.abs(z - meta.mesh.position.z) <= 1.25
+}
+
+function comprobarVictoria() {
+  if (ganado) return
+
+  const ambosEnMeta =
+    enMeta(jugador1, meta1) &&
+    enMeta(jugador2, meta2)
+
+  if (recogidos === 2 && ambosEnMeta) {
+    ganado = true
+    overlay.style.display = 'flex'
+  }
+}
+
+btnReiniciar.addEventListener('click', () => {
+  ganado = false
+  overlay.style.display = 'none'
+  resetearPosiciones()
+  reiniciarDiamantes()
+  mostrarNotificacion('¡Nueva partida!')
+})
+
+// ==========================================================
+// BUCLE PRINCIPAL
+// ==========================================================
 function animate() {
   requestAnimationFrame(animate)
 
-  const delta = clock.getDelta()
-  const currentSpeed = activeKeys['KeyQ'] ? sprintSpeed : normalSpeed
-  const moveDistance = currentSpeed * delta
+  const delta = Math.min(clock.getDelta(), 0.05)
 
-  if (diamante.mesh) {
-    let moveX = 0
-    let moveZ = 0
+  if (!ganado) {
+    procesarJugador(jugador1, delta)
+    procesarJugador(jugador2, delta)
 
-    if (activeKeys['KeyW']) moveZ -= 1
-    if (activeKeys['KeyS']) moveZ += 1
-    if (activeKeys['KeyA']) moveX -= 1
-    if (activeKeys['KeyD']) moveX += 1
+    comprobarPincho()
+    comprobarDiamantes()
+    comprobarVictoria()
+  }
 
-    if (moveX !== 0 || moveZ !== 0) {
-      const vector = new THREE.Vector3(moveX, 0, moveZ).normalize()
-
-      const oldX = diamante.mesh.position.x
-      const oldZ = diamante.mesh.position.z
-
-      diamante.mesh.position.x += vector.x * moveDistance
-      diamante.mesh.position.z += vector.z * moveDistance
-      diamante.mesh.rotation.y = Math.atan2(vector.x, vector.z)
-
-      // Colisión con el cubo
-      if (cubo.mesh) {
-        diamante.mesh.updateMatrixWorld(true)
-        cubo.mesh.updateMatrixWorld(true)
-
-        const boxDiamante = new THREE.Box3().setFromObject(diamante.mesh)
-        const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
-
-        if (boxDiamante.intersectsBox(boxCubo)) {
-          if (diamante.mesh.position.y < boxCubo.max.y - 0.3) {
-            diamante.mesh.position.x = oldX
-            diamante.mesh.position.z = oldZ
-          }
-        }
-      }
+  // Giro suave de los diamantes
+  for (const d of diamantes) {
+    if (d.mesh && !d.recogido) {
+      d.mesh.rotation.y += delta * 1.5
     }
+  }
 
-    // Muerte con el pincho
-    if (pincho.mesh) {
-      diamante.mesh.updateMatrixWorld(true)
-      pincho.mesh.updateMatrixWorld(true)
+  // La cámara sigue el punto medio entre los dos jugadores
+  const posiciones = [jugador1, jugador2]
+    .filter((j) => j.mesh)
+    .map((j) => j.mesh.position)
 
-      const boxDiamante = new THREE.Box3().setFromObject(diamante.mesh)
-      const boxPincho = new THREE.Box3().setFromObject(pincho.mesh)
-
-      if (boxDiamante.intersectsBox(boxPincho)) {
-        morir()
-      }
-    }
-
-    // Colisión con punto1.glb (Recogible)
-    if (diamantePunto1.mesh && !diamantePunto1.collected) {
-      diamante.mesh.updateMatrixWorld(true)
-      diamantePunto1.mesh.updateMatrixWorld(true)
-
-      const boxDiamante = new THREE.Box3().setFromObject(diamante.mesh)
-      const boxPunto1 = new THREE.Box3().setFromObject(diamantePunto1.mesh)
-
-      if (boxDiamante.intersectsBox(boxPunto1)) {
-        diamantePunto1.collected = true
-        scene.remove(diamantePunto1.mesh)
-        mostrarNotificacion()
-      }
-    }
-
-    // Salto con la letra E
-    if (activeKeys['KeyE'] && !diamante.isJumping) {
-      diamante.vy = jumpForce
-      diamante.isJumping = true
-    }
-
-    // Plataforma y gravedad
-    let sueloActual = diamante.baseY
-
-    if (cubo.mesh) {
-      diamante.mesh.updateMatrixWorld(true)
-      cubo.mesh.updateMatrixWorld(true)
-
-      const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
-
-      const sobreCuboXZ = 
-        diamante.mesh.position.x >= boxCubo.min.x - 0.4 &&
-        diamante.mesh.position.x <= boxCubo.max.x + 0.4 &&
-        diamante.mesh.position.z >= boxCubo.min.z - 0.4 &&
-        diamante.mesh.position.z <= boxCubo.max.z + 0.4
-
-      if (sobreCuboXZ && diamante.mesh.position.y >= boxCubo.max.y - 0.5) {
-        sueloActual = boxCubo.max.y
-      }
-    }
-
-    if (diamante.isJumping || diamante.mesh.position.y > sueloActual) {
-      diamante.mesh.position.y += diamante.vy * delta
-      diamante.vy -= gravity * delta
-
-      if (diamante.mesh.position.y <= sueloActual) {
-        diamante.mesh.position.y = sueloActual
-        diamante.isJumping = false
-        diamante.vy = 0
-      }
-    } else {
-      diamante.mesh.position.y = sueloActual
-    }
-
-    controls.target.copy(diamante.mesh.position)
+  if (posiciones.length > 0) {
+    const medio = new THREE.Vector3()
+    posiciones.forEach((p) => medio.add(p))
+    medio.divideScalar(posiciones.length)
+    controls.target.lerp(medio, 0.1)
   }
 
   controls.update()
   renderer.render(scene, camera)
-    // --- LÓGICA DEL JUGADOR 2 (Flechas + Espacio) ---
-  if (jugador2.mesh) {
-    let moveX2 = 0
-    let moveZ2 = 0
-
-    if (activeKeys['ArrowUp']) moveZ2 -= 1
-    if (activeKeys['ArrowDown']) moveZ2 += 1
-    if (activeKeys['ArrowLeft']) moveX2 -= 1
-    if (activeKeys['ArrowRight']) moveX2 += 1
-
-    if (moveX2 !== 0 || moveZ2 !== 0) {
-      const vector2 = new THREE.Vector3(moveX2, 0, moveZ2).normalize()
-      const oldX2 = jugador2.mesh.position.x
-      const oldZ2 = jugador2.mesh.position.z
-
-      jugador2.mesh.position.x += vector2.x * moveDistance
-      jugador2.mesh.position.z += vector2.z * moveDistance
-      jugador2.mesh.rotation.y = Math.atan2(vector2.x, vector2.z)
-
-      // Colisión lateral con el cubo
-      if (cubo.mesh) {
-        jugador2.mesh.updateMatrixWorld(true)
-        cubo.mesh.updateMatrixWorld(true)
-        const boxJ2 = new THREE.Box3().setFromObject(jugador2.mesh)
-        const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
-
-        if (boxJ2.intersectsBox(boxCubo) && jugador2.mesh.position.y < boxCubo.max.y - 0.3) {
-          jugador2.mesh.position.x = oldX2
-          jugador2.mesh.position.z = oldZ2
-        }
-      }
-    }
-
-    // Muerte cooperativa con el pincho
-    if (pincho.mesh) {
-      jugador2.mesh.updateMatrixWorld(true)
-      pincho.mesh.updateMatrixWorld(true)
-      const boxJ2 = new THREE.Box3().setFromObject(jugador2.mesh)
-      const boxPincho = new THREE.Box3().setFromObject(pincho.mesh)
-
-      if (boxJ2.intersectsBox(boxPincho)) {
-        morir()
-      }
-    }
-
-    // Salto con Espacio (Space)
-    if (activeKeys['Space'] && !jugador2.isJumping) {
-      jugador2.vy = jumpForce
-      jugador2.isJumping = true
-    }
-
-    // Gravedad y plataforma para Jugador 2
-    let sueloJ2 = jugador2.baseY
-    if (cubo.mesh) {
-      jugador2.mesh.updateMatrixWorld(true)
-      cubo.mesh.updateMatrixWorld(true)
-      const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
-      const sobreCuboXZ2 =
-        jugador2.mesh.position.x >= boxCubo.min.x - 0.4 &&
-        jugador2.mesh.position.x <= boxCubo.max.x + 0.4 &&
-        jugador2.mesh.position.z >= boxCubo.min.z - 0.4 &&
-        jugador2.mesh.position.z <= boxCubo.max.z + 0.4
-
-      if (sobreCuboXZ2 && jugador2.mesh.position.y >= boxCubo.max.y - 0.2) {
-        sueloJ2 = boxCubo.max.y
-      }
-    }
-
-    if (jugador2.isJumping || jugador2.mesh.position.y > sueloJ2) {
-      jugador2.mesh.position.y += jugador2.vy * delta
-      jugador2.vy -= gravity * delta
-
-      if (jugador2.mesh.position.y <= sueloJ2) {
-        jugador2.mesh.position.y = sueloJ2
-        jugador2.vy = 0
-        jugador2.isJumping = false
-      }
-    }
-  }
-
 }
 
 animate()
 
+// ==========================================================
+// RESIZE
+// ==========================================================
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
