@@ -71,6 +71,13 @@ let diamante = {
   isJumping: false,
   baseY: 0
 }
+let jugador2 = {
+  mesh: null,
+  vy: 0,
+  isJumping: false,
+  baseY: 0
+}
+
 
 let cubo = {
   mesh: null,
@@ -139,6 +146,26 @@ loader.load(
   undefined,
   (error) => console.error('Error al cargar Cubo:', error)
 )
+// Segundo Jugador Provisional (Caramelo)
+loader.load(
+  '/models/caramelo.glb',
+  function (gltf) {
+    jugador2.mesh = gltf.scene
+    jugador2.mesh.position.set(2, 0, 0)
+    
+    const box = new THREE.Box3().setFromObject(jugador2.mesh)
+    const size = box.getSize(new THREE.Vector3())
+    const scale = 2.5 / size.y
+    jugador2.mesh.scale.setScalar(scale)
+    jugador2.baseY = -box.min.y * scale
+    jugador2.mesh.position.y = jugador2.baseY
+
+    scene.add(jugador2.mesh)
+  },
+  undefined,
+  (error) => console.error('Error al cargar Jugador 2:', error)
+)
+
 
 // Pincho
 loader.load(
@@ -203,11 +230,18 @@ const gravity = 15
 const jumpForce = 10
 
 function morir() {
-  if (!diamante.mesh) return
-  diamante.mesh.position.set(0, diamante.baseY, 0)
-  diamante.vy = 0
-  diamante.isJumping = false
+  if (diamante.mesh) {
+    diamante.mesh.position.set(0, diamante.baseY, 0)
+    diamante.vy = 0
+    diamante.isJumping = false
+  }
+  if (jugador2.mesh) {
+    jugador2.mesh.position.set(2, jugador2.baseY, 0)
+    jugador2.vy = 0
+    jugador2.isJumping = false
+  }
 }
+
 
 function mostrarNotificacion() {
   const bar = document.getElementById('notification-bar')
@@ -334,6 +368,86 @@ function animate() {
 
   controls.update()
   renderer.render(scene, camera)
+    // --- LÓGICA DEL JUGADOR 2 (Flechas + Espacio) ---
+  if (jugador2.mesh) {
+    let moveX2 = 0
+    let moveZ2 = 0
+
+    if (activeKeys['ArrowUp']) moveZ2 -= 1
+    if (activeKeys['ArrowDown']) moveZ2 += 1
+    if (activeKeys['ArrowLeft']) moveX2 -= 1
+    if (activeKeys['ArrowRight']) moveX2 += 1
+
+    if (moveX2 !== 0 || moveZ2 !== 0) {
+      const vector2 = new THREE.Vector3(moveX2, 0, moveZ2).normalize()
+      const oldX2 = jugador2.mesh.position.x
+      const oldZ2 = jugador2.mesh.position.z
+
+      jugador2.mesh.position.x += vector2.x * moveDistance
+      jugador2.mesh.position.z += vector2.z * moveDistance
+      jugador2.mesh.rotation.y = Math.atan2(vector2.x, vector2.z)
+
+      // Colisión lateral con el cubo
+      if (cubo.mesh) {
+        jugador2.mesh.updateMatrixWorld(true)
+        cubo.mesh.updateMatrixWorld(true)
+        const boxJ2 = new THREE.Box3().setFromObject(jugador2.mesh)
+        const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
+
+        if (boxJ2.intersectsBox(boxCubo) && jugador2.mesh.position.y < boxCubo.max.y - 0.3) {
+          jugador2.mesh.position.x = oldX2
+          jugador2.mesh.position.z = oldZ2
+        }
+      }
+    }
+
+    // Muerte cooperativa con el pincho
+    if (pincho.mesh) {
+      jugador2.mesh.updateMatrixWorld(true)
+      pincho.mesh.updateMatrixWorld(true)
+      const boxJ2 = new THREE.Box3().setFromObject(jugador2.mesh)
+      const boxPincho = new THREE.Box3().setFromObject(pincho.mesh)
+
+      if (boxJ2.intersectsBox(boxPincho)) {
+        morir()
+      }
+    }
+
+    // Salto con Espacio (Space)
+    if (activeKeys['Space'] && !jugador2.isJumping) {
+      jugador2.vy = jumpForce
+      jugador2.isJumping = true
+    }
+
+    // Gravedad y plataforma para Jugador 2
+    let sueloJ2 = jugador2.baseY
+    if (cubo.mesh) {
+      jugador2.mesh.updateMatrixWorld(true)
+      cubo.mesh.updateMatrixWorld(true)
+      const boxCubo = new THREE.Box3().setFromObject(cubo.mesh)
+      const sobreCuboXZ2 =
+        jugador2.mesh.position.x >= boxCubo.min.x - 0.4 &&
+        jugador2.mesh.position.x <= boxCubo.max.x + 0.4 &&
+        jugador2.mesh.position.z >= boxCubo.min.z - 0.4 &&
+        jugador2.mesh.position.z <= boxCubo.max.z + 0.4
+
+      if (sobreCuboXZ2 && jugador2.mesh.position.y >= boxCubo.max.y - 0.2) {
+        sueloJ2 = boxCubo.max.y
+      }
+    }
+
+    if (jugador2.isJumping || jugador2.mesh.position.y > sueloJ2) {
+      jugador2.mesh.position.y += jugador2.vy * delta
+      jugador2.vy -= gravity * delta
+
+      if (jugador2.mesh.position.y <= sueloJ2) {
+        jugador2.mesh.position.y = sueloJ2
+        jugador2.vy = 0
+        jugador2.isJumping = false
+      }
+    }
+  }
+
 }
 
 animate()
